@@ -14,6 +14,7 @@ add_executable(cache_server_tests
     request_pipeline_tests.cpp
     server_tests.cpp
     store_lru_tests.cpp
+    thread_pool_tests.cpp
 )
 
 target_link_libraries(cache_server_tests

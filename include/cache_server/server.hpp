@@ -9,10 +9,14 @@
 #include <string>
 
 #include "cache_server/store.hpp"
+#include "cache_server/thread_pool.hpp"
 
 class Server {
 public:
-    explicit Server(std::uint16_t port, std::size_t capacity = std::numeric_limits<std::size_t>::max());
+    explicit Server(std::uint16_t port, 
+                    std::size_t capacity = std::numeric_limits<std::size_t>::max(),
+                    std::size_t worker_count = 4,
+                    std::size_t max_pending_clients = 64);
     ~Server();
 
     // don't allow copying of servers
@@ -27,9 +31,9 @@ private:
     int listening_socket_ = -1;
     Store store_{};                            // the data storage
     std::atomic<bool> running_{false};         // indicates if server should continue running
-    std::vector<std::thread> client_threads_;  // the list of threads hosting the client conenctions
     std::unordered_set<int> client_sockets_;   // a set of client sockets
     std::mutex clients_mutex_;                 // lock for the socket list
+    ThreadPool thread_pool_;                   // the worker pool
 
     // helper for ensuring all data is sent
     void send_all(int client_socket, const std::string& message);

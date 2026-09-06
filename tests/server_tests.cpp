@@ -347,3 +347,75 @@ TEST_F(CapacityServerTest, ServerEvictsLeastRecentlyUsedKey) {
     EXPECT_EQ(receive_line(client_socket, pending), "VALUE three\n");
 
 }
+
+// Class for testing the worker pool
+class WorkerPoolServerTest : public ::testing::Test {
+protected:
+    static constexpr std::uint16_t port = 18081;
+
+    Server server{port, 100, 1, 1};
+    std::thread server_thread;
+    int client_socket{-1};
+
+    void SetUp() override {
+        server_thread = std::thread([this]() {
+            server.run();
+        });
+
+        client_socket = connect_to_server(port);
+    }
+
+    void TearDown() override {
+        if (client_socket != -1) {
+            ::close(client_socket);
+            client_socket = -1;
+        }
+
+        server.stop();
+
+        if (server_thread.joinable()) {
+            server_thread.join();
+        }
+    }
+};
+
+// Test that a connection is rejected if worker and task pool is occupied
+TEST_F(WorkerPoolServerTest, RejectsClientWhenWorkerAndQueueAreFull) {
+    // client 1 occupies worker
+    send_line(client_socket, "SET username Ryan\n");
+
+    std::string first_pending;
+    ASSERT_EQ(receive_line(client_socket, first_pending), "OK\n");
+
+    // client 2 goes into queue
+    int queued_client = connect_to_server(port);
+    send_line(queued_client, "GET username\n");
+
+    // client 3 fails to enter
+    int rejected_client = connect_to_server(port);
+
+    // timeout if connection breaks
+    timeval timeout{};
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+
+    // we will not wait long for rejected client
+    ASSERT_NE(setsockopt(rejected_client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)), -1);
+
+    char buffer[1];
+    ssize_t received = recv(rejected_client, buffer, sizeof(buffer), 0);
+    int receive_error = errno;
+
+    // close the tcp socket and make sure it closes naturally
+    EXPECT_TRUE(received == 0 || (received == -1 && receive_error == ECONNRESET));
+    close(rejected_client);
+
+    // client 1 is released
+    close(client_socket);
+    client_socket = -1;
+
+    // client 2 should be handled
+    std::string second_pending;
+    EXPECT_EQ(receive_line(queued_client, second_pending), "VALUE Ryan\n");
+    close(queued_client);
+}
