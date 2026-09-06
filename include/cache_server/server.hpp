@@ -12,7 +12,7 @@
 
 class Server {
 public:
-    explicit Server(std::uint16_t port);
+    explicit Server(std::uint16_t port, std::size_t capacity = std::numeric_limits<std::size_t>::max());
     ~Server();
 
     // don't allow copying of servers

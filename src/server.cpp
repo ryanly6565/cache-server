@@ -5,6 +5,9 @@
 #include <system_error>
 #include <unistd.h>
 #include <thread>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 
 #include "cache_server/server.hpp"
 #include "cache_server/store.hpp"
@@ -12,7 +15,7 @@
 #include "cache_server/command_processor.hpp"
 #include "cache_server/request_parser.hpp"
 
-Server::Server(std::uint16_t port): port_(port) {};
+Server::Server(std::uint16_t port, std::size_t capacity):port_(port), store_(capacity){};
 Server::~Server() {
     if (listening_socket_ != -1) {
         close(listening_socket_);

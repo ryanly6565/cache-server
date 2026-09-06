@@ -13,6 +13,7 @@ add_executable(cache_server_tests
     command_processor_tests.cpp
     request_pipeline_tests.cpp
     server_tests.cpp
+    store_lru_tests.cpp
 )
 
 target_link_libraries(cache_server_tests

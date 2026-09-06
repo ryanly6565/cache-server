@@ -296,3 +296,54 @@ TEST_F(ServerTest, ServerShutdownDoesntHang) {
     client_socket = -1;
     close(new_client_socket);
 }
+
+// Class for testing capacity
+class CapacityServerTest : public ::testing::Test {
+protected:
+    static constexpr std::uint16_t port = 18081;
+
+    Server server{port, 2};
+    std::thread server_thread;
+    int client_socket{-1};
+
+    void SetUp() override {
+        server_thread = std::thread([this]() {
+            server.run();
+        });
+
+        client_socket = connect_to_server(port);
+    }
+
+    void TearDown() override {
+        if (client_socket != -1) {
+            close(client_socket);
+        }
+
+        server.stop();
+
+        if (server_thread.joinable()) {
+            server_thread.join();
+        }
+    }
+};
+
+TEST_F(CapacityServerTest, ServerEvictsLeastRecentlyUsedKey) {
+    send_line(client_socket, 
+             "SET first one\n"
+             "SET second two\n"
+             "GET first\n"
+             "SET third three\n"
+             "GET first\n"
+             "GET second\n"
+             "GET third\n");
+    std::string pending;
+
+    EXPECT_EQ(receive_line(client_socket, pending), "OK\n");
+    EXPECT_EQ(receive_line(client_socket, pending), "OK\n");
+    EXPECT_EQ(receive_line(client_socket, pending), "VALUE one\n");
+    EXPECT_EQ(receive_line(client_socket, pending), "OK\n");
+    EXPECT_EQ(receive_line(client_socket, pending), "VALUE one\n");
+    EXPECT_EQ(receive_line(client_socket, pending), "NOT_FOUND\n");
+    EXPECT_EQ(receive_line(client_socket, pending), "VALUE three\n");
+
+}
