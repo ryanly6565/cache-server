@@ -10,18 +10,21 @@
 #include <limits>
 #include <stdexcept>
 #include <iostream>
+#include <condition_variable>
+#include <thread>
 
 // Class representing the internal storage of data.
 class Store {
 public:
     // Constructor
-    Store(): max_capacity_(std::numeric_limits<std::size_t>::max()) {};
-    Store(std::size_t max_capacity) {
-        if (max_capacity <= 0) {
-            throw std::invalid_argument("Store capacity must be greater than zero.");
-        }
-        max_capacity_ = max_capacity;
-    };
+    Store();
+    Store(std::size_t max_capacity, std::chrono::milliseconds cleanup_interval = std::chrono::milliseconds(1000));
+    
+    // Destructor
+    ~Store();
+
+    Store(const Store&) = delete;
+    Store& operator=(const Store&) = delete;
 
     // Records the results of using an expire.
     enum class ExpireResult {
@@ -42,14 +45,6 @@ public:
     Store::ExpireResult expire(const std::string& key, std::chrono::steady_clock::duration lifetime);
     // Getter function for current capacity
     std::size_t size() const;
-
-
-    void print_data(){
-        std::cout << "print dataa:\n";
-        for (auto pairing : data_) {
-            std::cout << pairing.first << " " << pairing.second.value << "\n";
-        }
-    }
 
 private:
     // An entry in the cache, stores a value and an expiration time.
@@ -79,7 +74,7 @@ private:
     // checks if entry is expired and deletes it if it is, false means it is not expired
     inline bool erase_if_expired(std::pair<const std::string, Entry>& pairing) {
         Entry entry = pairing.second;
-        if (entry.expiry_date.has_value() && entry.expiry_date.value() < std::chrono::steady_clock::now()) {
+        if (entry.expiry_date.has_value() && entry.expiry_date.value() <= std::chrono::steady_clock::now()) {
             lru_order_.erase(entry.lru_position);
             data_.erase(pairing.first);
             return true;
@@ -88,16 +83,13 @@ private:
         return false;
     }
 
-    // loops through pairings and removes them
-    void clean_expired() {
-        auto position = data_.begin();
-
-        while (position != data_.end()) {
-            auto current = position;
-            position++;
-            erase_if_expired(*current);
-        }
-    }
+    // cleanup members
+    void cleanup_loop();
+    void clean_expired_locked();
+    std::thread cleanup_thread_;
+    std::condition_variable cleanup_condition_;
+    bool stopping_{false};
+    std::chrono::milliseconds cleanup_interval_;
 };
 
 

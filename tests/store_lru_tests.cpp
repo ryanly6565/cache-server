@@ -19,7 +19,6 @@ TEST(StoreLRUTest, CapacityOneAcceptsOneKey) {
     store.set("password", "password12345");
 
     std::cout << "size: " << store.size() << std::endl;
-    store.print_data();
 
     EXPECT_TRUE(store.exists("password"));
     EXPECT_FALSE(store.exists("username"));
@@ -123,8 +122,6 @@ TEST(StoreLRUTest, SetMakesRecent) {
     store.set("2", "2");
     store.set("1", "new 1");
     store.set("3", "3");
-
-    store.print_data();
 
     EXPECT_TRUE(store.exists("1"));
     EXPECT_FALSE(store.exists("2"));

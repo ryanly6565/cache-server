@@ -388,3 +388,50 @@ TEST(StoreTest, NoExpiryBeforeDeadline) {
     EXPECT_EQ(store.get("username").value(), "new_user_12345");
     EXPECT_TRUE(store.remove("username"));
 }
+
+// Test that a Store withe cleanup interval 0 throws an error.
+TEST(StoreTest, ZeroCleanupIntervalThrows) {
+    EXPECT_THROW(Store store(4, std::chrono::milliseconds(0)), std::invalid_argument);
+}
+
+// Test that the cleanup thread is able to remove expired keys on its own.
+TEST(StoreTest, ExpiredRemovedWithoutAccess) {
+    Store store {1, std::chrono::milliseconds(5)};
+    store.set("username", "new_user_12345");
+    store.expire("username", std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    ASSERT_EQ(store.size(), 0);
+}
+
+// Test that the keys not marked for expiry are not consumed by cleanup.
+TEST(StoreTest, ExpirePreservesNonExpiry) {
+    Store store {10, std::chrono::milliseconds(3)};
+    store.set("car", "red");
+
+    store.set("bike", "yellow");
+    Store::ExpireResult result = store.expire("bike", std::chrono::milliseconds(1));
+    EXPECT_EQ(result, Store::ExpireResult::SUCCESS);
+    std::this_thread::sleep_for(std::chrono::milliseconds(4));
+    ASSERT_FALSE(store.exists("bike"));
+    ASSERT_EQ(store.size(), 1);
+    
+    store.set("boat", "blue");
+    store.expire("boat", std::chrono::milliseconds(1));
+    result = store.expire("bike", std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(4));
+
+    ASSERT_EQ(store.size(), 1);
+    ASSERT_FALSE(store.exists("boat"));
+    ASSERT_TRUE(store.exists("car"));
+}
+
+// Test that trying to expire an expired key does not revive it.
+TEST(StoreTest, ExpiryLeavesExpired) {
+    Store store {1, std::chrono::milliseconds(100)};
+    store.set("username", "new_user_12345");
+    store.expire("username", std::chrono::milliseconds(4));
+    std::this_thread::sleep_for(std::chrono::milliseconds(6));
+    ASSERT_EQ(store.expire("username", std::chrono::milliseconds(1)), Store::ExpireResult::KEY_NOT_FOUND);
+    EXPECT_FALSE(store.exists("username"));
+}
+
