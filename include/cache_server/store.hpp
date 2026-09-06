@@ -48,6 +48,18 @@ public:
     // Getter function for current capacity
     std::size_t size() const;
 
+    // struct for returning cache stats
+    struct Stats {
+        std::size_t entries;
+        std::size_t capacity;
+        std::uint64_t hits;
+        std::uint64_t misses;
+        std::uint64_t evictions;
+        std::uint64_t expirations;
+    };
+
+    Stats stats();
+
 private:
     // An entry in the cache, stores a value and an expiration time.
     struct Entry {
@@ -77,6 +89,7 @@ private:
     inline bool erase_if_expired(std::pair<const std::string, Entry>& pairing) {
         Entry entry = pairing.second;
         if (entry.expiry_date.has_value() && entry.expiry_date.value() <= std::chrono::steady_clock::now()) {
+            expirations_++;
             lru_order_.erase(entry.lru_position);
             data_.erase(pairing.first);
             return true;
@@ -92,6 +105,12 @@ private:
     std::condition_variable cleanup_condition_;
     bool stopping_{false};
     std::chrono::milliseconds cleanup_interval_;
+
+    // statistic variables
+    std::uint64_t hits_{0};
+    std::uint64_t misses_{0};
+    std::uint64_t evictions_{0};
+    std::uint64_t expirations_{0};
 };
 
 

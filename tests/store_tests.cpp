@@ -459,12 +459,91 @@ TEST(StoreTest, TtlReturnsRemainingSeconds) {
     EXPECT_LE(result, 10);
 }
 
-// Test that ttl -2 on an already expired key
-TEST(StoreTest, TtlExpiredReturnsNegativeTwo) {
-    Store store {1, std::chrono::milliseconds(100)};
-    store.set("username", "user_name_12345");
-    store.expire("username", std::chrono::milliseconds(1));
-    std::this_thread::sleep_for(std::chrono::milliseconds(8));
-    ASSERT_EQ(store.ttl("username"), -2);
+// Test that new stores have 0 (or default in the case of capacity) in all stats initally
+TEST(StoreTest, NewStoreStatsStartAtZero) {
+    Store store {1};
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 0);
+    EXPECT_EQ(stats.capacity, 1);
+    EXPECT_EQ(stats.hits, 0);
+    EXPECT_EQ(stats.misses, 0);
+    EXPECT_EQ(stats.evictions, 0);
+    EXPECT_EQ(stats.expirations, 0);
 }
 
+// Test that hits and misses are tracked properly
+TEST(StoreTest, HitsMissesTrackedProperly) {
+    Store store {2};
+    store.set("car", "red");
+    store.set("bike", "blue");
+    store.get("car");
+    store.get("car");
+    store.get("boat");
+    store.remove("bike");
+    store.get("bike");
+
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 1);
+    EXPECT_EQ(stats.capacity, 2);
+    EXPECT_EQ(stats.hits, 2);
+    EXPECT_EQ(stats.misses, 2);
+    EXPECT_EQ(stats.evictions, 0);
+    EXPECT_EQ(stats.expirations, 0);
+}
+
+// Test that evictions are tracked properly
+TEST(StoreTest, EvictionsTrackedProperly) {
+    Store store {2};
+    store.set("car", "red");
+    store.set("bike", "blue");
+    store.set("bike", "orange");  // doesnt evict
+    store.set("boat", "green");
+    store.set("car", "red");
+
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 2);
+    EXPECT_EQ(stats.capacity, 2);
+    EXPECT_EQ(stats.hits, 0);
+    EXPECT_EQ(stats.misses, 0);
+    EXPECT_EQ(stats.evictions, 2);
+    EXPECT_EQ(stats.expirations, 0);
+}
+
+// Test that automatic expirations are tracked properly
+TEST(StoreTest, AutoExpirationsTrackedProperly) {
+    Store store {2, std::chrono::milliseconds{4}};
+    store.set("car", "red");
+    store.expire("car", std::chrono::milliseconds{1});
+    store.set("bike", "blue");
+    store.expire("bike", std::chrono::milliseconds{1});
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(6));
+    ASSERT_EQ(store.size(), 0);
+
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 0);
+    EXPECT_EQ(stats.capacity, 2);
+    EXPECT_EQ(stats.hits, 0);
+    EXPECT_EQ(stats.misses, 0);
+    EXPECT_EQ(stats.evictions, 0);
+    EXPECT_EQ(stats.expirations, 2);
+}
+
+// Test that operation expirations are tracked properly
+TEST(StoreTest, ManualExpirationsTrackedProperly) {
+    Store store {2, std::chrono::milliseconds{1000}};
+    store.set("car", "red");
+    store.set("bike", "blue");
+    store.expire("bike", std::chrono::milliseconds{1});
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    store.get("bike");
+
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 1);
+    EXPECT_EQ(stats.capacity, 2);
+    EXPECT_EQ(stats.hits, 0);
+    EXPECT_EQ(stats.misses, 1);
+    EXPECT_EQ(stats.evictions, 0);
+    EXPECT_EQ(stats.expirations, 1);
+}

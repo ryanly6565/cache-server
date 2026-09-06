@@ -48,6 +48,16 @@ std::string CommandProcessor::execute(const Command& command) {
             int64_t result = store_.ttl(command.key);
             return "INTEGER " + std::to_string(result);
         }
+        
+        case (CommandType::STATS):{
+            Store::Stats stats = store_.stats();
+            return "STATS entries=" + std::to_string(stats.entries) +
+                " capacity=" + std::to_string(stats.capacity) +
+                " hits=" + std::to_string(stats.hits) +
+                " misses=" + std::to_string(stats.misses) +
+                " evictions=" + std::to_string(stats.evictions) +
+                " expirations=" + std::to_string(stats.expirations);
+        }
     }
 
     return "";

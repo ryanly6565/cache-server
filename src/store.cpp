@@ -59,6 +59,7 @@ void Store::set(const std::string& key, const std::string& value) {
             std::string evicted_key = *(--lru_order_.end());
             lru_order_.erase(--lru_order_.end());
             data_.erase(evicted_key);
+            ++evictions_;
         }
         lru_order_.push_front(key);
         data_.insert_or_assign(key, Entry {value, std::nullopt, lru_order_.begin()});
@@ -78,13 +79,18 @@ std::optional<std::string> Store::get(const std::string& key) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     auto search_result = data_.find(key);
-    if (search_result == data_.end()) return std::nullopt;
+    if (search_result == data_.end()) {
+        misses_++;
+        return std::nullopt;
+    }
 
     if (erase_if_expired(*search_result)) {
+        misses_++;
         return std::nullopt;
     }
 
     Store::update_entry(search_result->second);
+    hits_++;
     return search_result->second.value;
 }
 
@@ -199,8 +205,26 @@ void Store::clean_expired_locked() {
         if (entry.expiry_date.has_value() && entry.expiry_date.value() <= now) {
             lru_order_.erase(entry.lru_position);
             iterator = data_.erase(iterator);
+            expirations_++;
         } else {
             ++iterator;
         }
     }
+}
+
+// function for retreiving statistics on the store
+Store::Stats Store::stats() {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    // remove any expired entires
+    clean_expired_locked();
+
+    return Stats{
+        data_.size(),
+        max_capacity_,
+        hits_,
+        misses_,
+        evictions_,
+        expirations_
+    };
 }
