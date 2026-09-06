@@ -29,7 +29,7 @@ std::string CommandProcessor::execute(const Command& command) {
             }
             return "INTEGER 0";
         
-        case (CommandType::EXPIRE):
+        case (CommandType::EXPIRE): {
             Store::ExpireResult result = store_.expire(command.key, command.lifetime.value());
             switch (result) {
                 case (Store::ExpireResult::SUCCESS):
@@ -41,7 +41,13 @@ std::string CommandProcessor::execute(const Command& command) {
                 case Store::ExpireResult::INVALID_DURATION:
                     return "ERROR invalid duration";
             }
-            break;
+            return "ERROR internal";
+        }
+        
+        case (CommandType::TTL):{
+            int64_t result = store_.ttl(command.key);
+            return "INTEGER " + std::to_string(result);
+        }
     }
 
     return "";

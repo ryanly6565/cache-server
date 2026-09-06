@@ -435,3 +435,36 @@ TEST(StoreTest, ExpiryLeavesExpired) {
     EXPECT_FALSE(store.exists("username"));
 }
 
+// Test that calling ttl on a missing key returns -2.
+TEST(StoreTest, TtlMissingReturnsNegativeTwo) {
+    Store store {1, std::chrono::milliseconds(100)};
+    ASSERT_EQ(store.ttl("username"), -2);
+}
+
+// Test that calling ttl on a no-expire key returns -1.
+TEST(StoreTest, TtlNoExpiryReturnsNegativeOne) {
+    Store store {1, std::chrono::milliseconds(100)};
+    store.set("username", "user_name_12345");
+    ASSERT_EQ(store.ttl("username"), -1);
+}
+
+// Test that ttl returns proper time
+TEST(StoreTest, TtlReturnsRemainingSeconds) {
+    Store store {1, std::chrono::milliseconds(100)};
+    store.set("username", "user_name_12345");
+    store.expire("username", std::chrono::seconds(10));
+    auto result = store.ttl("username");
+    
+    EXPECT_GE(result, 9);
+    EXPECT_LE(result, 10);
+}
+
+// Test that ttl -2 on an already expired key
+TEST(StoreTest, TtlExpiredReturnsNegativeTwo) {
+    Store store {1, std::chrono::milliseconds(100)};
+    store.set("username", "user_name_12345");
+    store.expire("username", std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(8));
+    ASSERT_EQ(store.ttl("username"), -2);
+}
+

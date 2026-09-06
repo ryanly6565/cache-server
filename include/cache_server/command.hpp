@@ -11,7 +11,8 @@ enum class CommandType {
     GET,
     DELETE,
     EXISTS,
-    EXPIRE
+    EXPIRE,
+    TTL
 };
 
 // enum representing the possibel errors that can occur during parsing

@@ -292,6 +292,20 @@ TEST(StoreLRUTest, ExpiredDoesNotAffectLRU) {
     EXPECT_TRUE(store.exists("4"));
 }
 
+// Test that ttl does not update LRU order.
+TEST(StoreLRUTest, TTlDoesNotAffectLRU) {
+    Store store{3};
+    store.set("1", "1");
+    store.set("2", "2");
+    store.set("3", "3");
+    store.ttl("1");
+    store.set("4", "4");
+
+    EXPECT_TRUE(store.exists("2"));
+    EXPECT_TRUE(store.exists("3"));
+    EXPECT_TRUE(store.exists("4"));
+}
+
 // Test that setting expired keys become the LRU.
 TEST(StoreLRUTest, SettingExpiredMakesLRU) {
     Store store{2};

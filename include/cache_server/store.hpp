@@ -43,6 +43,8 @@ public:
     bool exists(const std::string& key);
     // Operation for assigning an expiration to a key, given a positive integer representing time. Returns true if key is there, false otherwise.
     Store::ExpireResult expire(const std::string& key, std::chrono::steady_clock::duration lifetime);
+    // Operation for retrieving how long a key has to live.
+    std::int64_t ttl(const std::string& key);
     // Getter function for current capacity
     std::size_t size() const;
 

@@ -77,6 +77,15 @@ TEST(RequestParserTest, ParsingExpireNoKey) {
     EXPECT_EQ((std::get<ParseError>(result)), ParseError::EMPTY_KEY);
 }
 
+// Test that aTTL with no key returns an error
+TEST(RequestParserTest, ParsingTtlNoKey) {
+    RequestParser parser;
+    auto result = parser.parse("TTL ");
+
+    ASSERT_TRUE(std::holds_alternative<ParseError>(result));
+    EXPECT_EQ((std::get<ParseError>(result)), ParseError::EMPTY_KEY);
+}
+
 // Test that a command with too many arguments results in an error
 TEST(RequestParserTest, ParsingRejectsTooManyArgs) {
     RequestParser parser;
@@ -84,15 +93,18 @@ TEST(RequestParserTest, ParsingRejectsTooManyArgs) {
     auto result2 = parser.parse("DELETE username user_name");
     auto result3 = parser.parse("EXISTS username user_name");
     auto result4 = parser.parse("EXPIRE username 1 user_name");
+    auto result5 = parser.parse("TTL username 1 user_name");
 
     ASSERT_TRUE(std::holds_alternative<ParseError>(result1));
     ASSERT_TRUE(std::holds_alternative<ParseError>(result2));
     ASSERT_TRUE(std::holds_alternative<ParseError>(result3));
     ASSERT_TRUE(std::holds_alternative<ParseError>(result4));
+    ASSERT_TRUE(std::holds_alternative<ParseError>(result5));
     EXPECT_EQ((std::get<ParseError>(result1)), ParseError::WRONG_ARGUMENT_COUNT);
     EXPECT_EQ((std::get<ParseError>(result2)), ParseError::WRONG_ARGUMENT_COUNT);
     EXPECT_EQ((std::get<ParseError>(result3)), ParseError::WRONG_ARGUMENT_COUNT);
     EXPECT_EQ((std::get<ParseError>(result4)), ParseError::WRONG_ARGUMENT_COUNT);
+    EXPECT_EQ((std::get<ParseError>(result5)), ParseError::WRONG_ARGUMENT_COUNT);
 }
 
 // Test that a valid set command works.
@@ -231,3 +243,11 @@ TEST(RequestParserTest, ParsingExpireDurationTooLong) {
     EXPECT_EQ((std::get<ParseError>(result)), ParseError::INVALID_DURATION);
 }
 
+// Test a valid TTL command works.
+TEST(RequestParserTest, ParserParsesTtl) {
+    RequestParser parser;
+    auto result = parser.parse("Ttl username");
+
+    ASSERT_TRUE(std::holds_alternative<Command>(result));
+    EXPECT_EQ((std::get<Command>(result)), (Command{CommandType::TTL, "username", std::nullopt, std::nullopt}));
+}

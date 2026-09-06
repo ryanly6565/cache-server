@@ -140,6 +140,29 @@ Store::ExpireResult Store::expire(const std::string& key, std::chrono::steady_cl
     return Store::ExpireResult::SUCCESS;
 }
 
+std::int64_t Store::ttl(const std::string& key) {
+    static constexpr std::int64_t TTL_KEY_NOT_FOUND = -2;
+    static constexpr std::int64_t TTL_NO_EXPIRATION = -1;
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto search_result = data_.find(key);
+
+    if (search_result == data_.end()) return TTL_KEY_NOT_FOUND;
+
+    if (erase_if_expired(*search_result)) {
+        return TTL_KEY_NOT_FOUND;
+    }
+
+    if (search_result->second.expiry_date.has_value()) {
+        auto remaining = std::chrono::duration_cast<std::chrono::seconds>(
+            search_result->second.expiry_date.value() - std::chrono::steady_clock::now()
+        );
+
+        return static_cast<std::int64_t>(remaining.count());
+    }
+
+    return TTL_NO_EXPIRATION;
+}
 
 // Getter for current cacpcity.
 std::size_t Store::size() const {

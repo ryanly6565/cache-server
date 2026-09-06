@@ -51,6 +51,27 @@ TEST(RequestPipelineTest, PipelineProccessesExpireCorrectly) {
     EXPECT_EQ(parsed_command_2, "INTEGER 1");
 }
 
+// TTest that the complete pipeline can handle ttl properly.
+TEST(RequestPipelineTest, PipelineProccessesTtlCorrectly) {
+    Store store;
+    CommandProcessor processor{store};
+    RequestParser parser;
+    ParseResult command_1 = parser.parse("SET username user_name_12345");
+    ParseResult command_2 = parser.parse("EXPIRE username 60");
+    ParseResult command_3 = parser.parse("TTL username");
+
+    ASSERT_TRUE(std::holds_alternative<Command>(command_1));
+    ASSERT_TRUE(std::holds_alternative<Command>(command_2));
+    ASSERT_TRUE(std::holds_alternative<Command>(command_3));
+
+    std::string parsed_command_1 = processor.execute(std::get<Command>(command_1));
+    std::string parsed_command_2 = processor.execute(std::get<Command>(command_2));
+    std::string parsed_command_3 = processor.execute(std::get<Command>(command_3));
+    EXPECT_EQ(parsed_command_1, "OK");
+    EXPECT_EQ(parsed_command_2, "INTEGER 1");
+    EXPECT_TRUE(parsed_command_3 == "INTEGER 60" || parsed_command_3 == "INTEGER 59");
+}
+
 // Test that the complete pipeline can handle parse error properly.
 TEST(RequestPipelineTest, PipelineProccessesUnkownCommandCorrectly) {
     Store store;

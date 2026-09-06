@@ -88,6 +88,15 @@ ParseResult RequestParser::parse(const std::string& request) const {
         return Command {CommandType::EXPIRE, key, std::nullopt, std::chrono::seconds{duration}};
     }
 
+    // parse a tts command
+    else if (command == "TTL") {
+        std::string key, extra;
+        if (!(token_iterator >> key)) return ParseError::EMPTY_KEY;
+        if (token_iterator >> extra) return ParseError::WRONG_ARGUMENT_COUNT;
+
+        return Command {CommandType::TTL, key, std::nullopt, std::nullopt};
+    }
+
     // error on empty command
     else if (command == "") {
         return ParseError::EMPTY_REQUEST;
