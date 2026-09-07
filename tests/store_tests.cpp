@@ -388,3 +388,162 @@ TEST(StoreTest, NoExpiryBeforeDeadline) {
     EXPECT_EQ(store.get("username").value(), "new_user_12345");
     EXPECT_TRUE(store.remove("username"));
 }
+
+// Test that a Store withe cleanup interval 0 throws an error.
+TEST(StoreTest, ZeroCleanupIntervalThrows) {
+    EXPECT_THROW(Store store(4, std::chrono::milliseconds(0)), std::invalid_argument);
+}
+
+// Test that the cleanup thread is able to remove expired keys on its own.
+TEST(StoreTest, ExpiredRemovedWithoutAccess) {
+    Store store {1, std::chrono::milliseconds(5)};
+    store.set("username", "new_user_12345");
+    store.expire("username", std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    ASSERT_EQ(store.size(), 0);
+}
+
+// Test that the keys not marked for expiry are not consumed by cleanup.
+TEST(StoreTest, ExpirePreservesNonExpiry) {
+    Store store {10, std::chrono::milliseconds(3)};
+    store.set("car", "red");
+
+    store.set("bike", "yellow");
+    Store::ExpireResult result = store.expire("bike", std::chrono::milliseconds(1));
+    EXPECT_EQ(result, Store::ExpireResult::SUCCESS);
+    std::this_thread::sleep_for(std::chrono::milliseconds(4));
+    ASSERT_FALSE(store.exists("bike"));
+    ASSERT_EQ(store.size(), 1);
+    
+    store.set("boat", "blue");
+    store.expire("boat", std::chrono::milliseconds(1));
+    result = store.expire("bike", std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(4));
+
+    ASSERT_EQ(store.size(), 1);
+    ASSERT_FALSE(store.exists("boat"));
+    ASSERT_TRUE(store.exists("car"));
+}
+
+// Test that trying to expire an expired key does not revive it.
+TEST(StoreTest, ExpiryLeavesExpired) {
+    Store store {1, std::chrono::milliseconds(100)};
+    store.set("username", "new_user_12345");
+    store.expire("username", std::chrono::milliseconds(4));
+    std::this_thread::sleep_for(std::chrono::milliseconds(6));
+    ASSERT_EQ(store.expire("username", std::chrono::milliseconds(1)), Store::ExpireResult::KEY_NOT_FOUND);
+    EXPECT_FALSE(store.exists("username"));
+}
+
+// Test that calling ttl on a missing key returns -2.
+TEST(StoreTest, TtlMissingReturnsNegativeTwo) {
+    Store store {1, std::chrono::milliseconds(100)};
+    ASSERT_EQ(store.ttl("username"), -2);
+}
+
+// Test that calling ttl on a no-expire key returns -1.
+TEST(StoreTest, TtlNoExpiryReturnsNegativeOne) {
+    Store store {1, std::chrono::milliseconds(100)};
+    store.set("username", "user_name_12345");
+    ASSERT_EQ(store.ttl("username"), -1);
+}
+
+// Test that ttl returns proper time
+TEST(StoreTest, TtlReturnsRemainingSeconds) {
+    Store store {1, std::chrono::milliseconds(100)};
+    store.set("username", "user_name_12345");
+    store.expire("username", std::chrono::seconds(10));
+    auto result = store.ttl("username");
+    
+    EXPECT_GE(result, 9);
+    EXPECT_LE(result, 10);
+}
+
+// Test that new stores have 0 (or default in the case of capacity) in all stats initally
+TEST(StoreTest, NewStoreStatsStartAtZero) {
+    Store store {1};
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 0);
+    EXPECT_EQ(stats.capacity, 1);
+    EXPECT_EQ(stats.hits, 0);
+    EXPECT_EQ(stats.misses, 0);
+    EXPECT_EQ(stats.evictions, 0);
+    EXPECT_EQ(stats.expirations, 0);
+}
+
+// Test that hits and misses are tracked properly
+TEST(StoreTest, HitsMissesTrackedProperly) {
+    Store store {2};
+    store.set("car", "red");
+    store.set("bike", "blue");
+    store.get("car");
+    store.get("car");
+    store.get("boat");
+    store.remove("bike");
+    store.get("bike");
+
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 1);
+    EXPECT_EQ(stats.capacity, 2);
+    EXPECT_EQ(stats.hits, 2);
+    EXPECT_EQ(stats.misses, 2);
+    EXPECT_EQ(stats.evictions, 0);
+    EXPECT_EQ(stats.expirations, 0);
+}
+
+// Test that evictions are tracked properly
+TEST(StoreTest, EvictionsTrackedProperly) {
+    Store store {2};
+    store.set("car", "red");
+    store.set("bike", "blue");
+    store.set("bike", "orange");  // doesnt evict
+    store.set("boat", "green");
+    store.set("car", "red");
+
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 2);
+    EXPECT_EQ(stats.capacity, 2);
+    EXPECT_EQ(stats.hits, 0);
+    EXPECT_EQ(stats.misses, 0);
+    EXPECT_EQ(stats.evictions, 2);
+    EXPECT_EQ(stats.expirations, 0);
+}
+
+// Test that automatic expirations are tracked properly
+TEST(StoreTest, AutoExpirationsTrackedProperly) {
+    Store store {2, std::chrono::milliseconds{4}};
+    store.set("car", "red");
+    store.expire("car", std::chrono::milliseconds{1});
+    store.set("bike", "blue");
+    store.expire("bike", std::chrono::milliseconds{1});
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(6));
+    ASSERT_EQ(store.size(), 0);
+
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 0);
+    EXPECT_EQ(stats.capacity, 2);
+    EXPECT_EQ(stats.hits, 0);
+    EXPECT_EQ(stats.misses, 0);
+    EXPECT_EQ(stats.evictions, 0);
+    EXPECT_EQ(stats.expirations, 2);
+}
+
+// Test that operation expirations are tracked properly
+TEST(StoreTest, ManualExpirationsTrackedProperly) {
+    Store store {2, std::chrono::milliseconds{1000}};
+    store.set("car", "red");
+    store.set("bike", "blue");
+    store.expire("bike", std::chrono::milliseconds{1});
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    store.get("bike");
+
+    Store::Stats stats = store.stats();
+    EXPECT_EQ(stats.entries, 1);
+    EXPECT_EQ(stats.capacity, 2);
+    EXPECT_EQ(stats.hits, 0);
+    EXPECT_EQ(stats.misses, 1);
+    EXPECT_EQ(stats.evictions, 0);
+    EXPECT_EQ(stats.expirations, 1);
+}

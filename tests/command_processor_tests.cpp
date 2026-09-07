@@ -143,3 +143,49 @@ TEST(ProcessorTest, ProccessesMultipleProcessorsCorrectly) {
     EXPECT_EQ(store.get("bike").value(), "blue");
 }
 
+// Test that we process a TTL command with missing key correctly
+TEST(ProcessorTest, ProcessesTtlMissingKey) {
+    Store store;
+    CommandProcessor processor{store};
+
+    std::string response = processor.execute(Command{CommandType::TTL, "username", std::nullopt, std::nullopt});
+    EXPECT_EQ(response, "INTEGER -2");
+}
+
+// Test that we process a TTL command with missing key correctly
+TEST(ProcessorTest, ProcessesTtlNotExpired) {
+    Store store;
+    store.set("car","red");
+    CommandProcessor processor{store};
+
+    std::string response = processor.execute(Command{CommandType::TTL, "car", std::nullopt, std::nullopt});
+    EXPECT_EQ(response, "INTEGER -1");
+}
+
+// Test that we process a TTL command with a soon to expire key
+TEST(ProcessorTest, ProcessesTtlHasExpiry) {
+    Store store;
+    store.set("car","red");
+    store.expire("car", std::chrono::seconds{10});
+    CommandProcessor processor{store};
+
+    std::string response = processor.execute(Command{CommandType::TTL, "car", std::nullopt, std::nullopt});
+    EXPECT_TRUE(response == "INTEGER 9" || response == "INTEGER 10");
+}
+
+// Test that we process a STATS command with a soon to expire key
+TEST(ProcessorTest, ProcessesStatsCorrectly) {
+    Store store{2};
+    store.set("car","red");
+    store.set("bike", "blue");
+    store.get("car");
+    store.get("missing");
+    store.set("boat", "green");
+
+    CommandProcessor processor{store};
+    std::string response = processor.execute(Command{CommandType::STATS, "", std::nullopt, std::nullopt});
+
+    EXPECT_EQ(response,
+              "STATS entries=2 capacity=2 hits=1 misses=1 "
+              "evictions=1 expirations=0");
+}

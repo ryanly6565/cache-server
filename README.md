@@ -7,12 +7,14 @@ CacheServer is a multi-threaded in-memory key-value server written in C++20. It 
 - TCP server using POSIX sockets
 - Multiple parallel clients
 - Thread-safe shared key-value storage
-- Lazy key expiration
+- Automated key expiration
+- Least recently used key eviction
 - Case-insensitive commands
 - Values containing spaces
 - Request-size protection
 - Controlled server shutdown
 - Unit and TCP integration tests via GoogleTest
+- Configurable ports, cache capacity, number of worker threads, and maximum queue size for clients
 
 ## Supported Commands
 
@@ -22,7 +24,9 @@ CacheServer is a multi-threaded in-memory key-value server written in C++20. It 
 | `GET key` | Retrieves a value based on the key. | `GET username` |
 | `DELETE key` | Deletes a key-value pairing based on the key. | `DELETE username` |
 | `EXISTS key` | Checks whether the pairing associated with the key exists. | `EXISTS username` |
-| `EXPIRE key seconds` | Assigns an expiration time | `EXPIRE username 60` |
+| `EXPIRE key seconds` | Assigns an expiration time. | `EXPIRE username 60` |
+| `TTL key` | Returns the amount of seconds left before the key expires. | `TTL username` |
+| `STATS` | Returns cache statistics, like number of hits, misses, etc. | `STATS` |
 
 Commands are case-insensitive, while keys are case-sensitive. Every request must end with a newline.
 
@@ -96,6 +100,24 @@ To specify a different port:
 ./build/cache_server 9000
 ```
 
+To specify a different maximum cache capacity:
+
+```bash
+./build/cache_server 9000 1000
+```
+
+To specify a different number of worker threads:
+
+```bash
+./build/cache_server 9000 1000 8
+```
+
+To specify a different queue capacity:
+
+```bash
+./build/cache_server 9000 1000 8 64
+```
+
 Valid port numbers must range from `1` to `65535`.
 
 ## Connecting
@@ -143,6 +165,8 @@ The test suite includes:
 - Fragmented-send tests
 - Oversized request tests
 - Server shutdown tests
+- Least recently used eviction tests
+- Thread pool tests
 
 ## Architecture
 
@@ -151,7 +175,8 @@ CacheServer is divided into the following components:
 - **Server** — Opens the listening socket, accepts clients, manages client commands, and handles shutdown.
 - **RequestParser** — Converts incoming text requests into structured commands and reports syntax errors.
 - **CommandProcessor** — Executes parsed commands and produces protocol responses.
-- **Store** — Maintains shared key value pairings, handles any expiration, and protects the data from unsafe concurrent access.
+- **Store** — Maintains shared key-value pairs, handles expiration and LRU eviction, and protects data from unsafe concurrent access.
+- **Thread Pool** — Maintains a bounded client-task queue and a fixed set of worker threads.
 
 ## Project Structure
 
@@ -164,36 +189,28 @@ cache-server/
 │       ├── command_processor.hpp
 │       ├── request_parser.hpp
 │       ├── server.hpp
-│       └── store.hpp
+│       ├── store.hpp
+│       └── thread_pool.hpp
 ├── src/
 │   ├── command_processor.cpp
 │   ├── main.cpp
 │   ├── request_parser.cpp
 │   ├── server.cpp
-│   └── store.cpp
+│   ├── store.cpp
+│   └── thread_pool.cpp
 └── tests/
     ├── CMakeLists.txt
     ├── command_processor_tests.cpp
     ├── parser_tests.cpp
     ├── request_pipeline_tests.cpp
     ├── server_tests.cpp
-    └── store_tests.cpp
+    ├── store_tests.cpp
+    ├── store_lru_tests.cpp
+    └── thread_pool_tests.cpp
 ```
 
-## V1 Limitations
+## V2 Limitations
 
 - Data exists only in memory.
-- Expired entries are only removed lazily when accessed.
-- Each connected client exists on a separate thread.
-- The cache has no maximum capacity or eviction policy.
 - There is no authentication or encryption.
 - The protocol is custom and is not fully Redis-compatible.
-
-## Planned V2 Improvements
-
-- Add a controllable maximum cache capacity.
-- Add eviction (least recently used).
-- Convert to a bounded worker thread pool style of parallelism. 
-- Active instead of lazy expiration cleanup.
-- Accessible cache statistics.
-- Add commands like `TTL` and `STATS`.

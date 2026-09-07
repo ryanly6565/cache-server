@@ -7,6 +7,7 @@ add_library(cache_server_core
     src/request_parser.cpp
     src/command_processor.cpp
     src/server.cpp
+    src/thread_pool.cpp
 )
 
 target_include_directories(cache_server_core

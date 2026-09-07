@@ -5,6 +5,9 @@
 #include <system_error>
 #include <unistd.h>
 #include <thread>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
 
 #include "cache_server/server.hpp"
 #include "cache_server/store.hpp"
@@ -12,7 +15,8 @@
 #include "cache_server/command_processor.hpp"
 #include "cache_server/request_parser.hpp"
 
-Server::Server(std::uint16_t port): port_(port) {};
+Server::Server(std::uint16_t port, std::size_t capacity, std::size_t worker_count, std::size_t max_pending_clients):
+                port_(port), store_(capacity), thread_pool_(worker_count, max_pending_clients){};
 Server::~Server() {
     if (listening_socket_ != -1) {
         close(listening_socket_);
@@ -51,7 +55,6 @@ void Server::run() {
         == -1) {
         throw std::system_error(errno, std::generic_category(), "Setting SO_REUSEADDR failed.");
     }
-
 
     // create the network address
     sockaddr_in socket_address{};
@@ -94,6 +97,39 @@ void Server::run() {
             break;
         }
 
+        // add the task to the pool
+        bool accepted = thread_pool_.submit([this, client_socket]() {
+            try {
+                handle_client(client_socket);
+            } catch (const std::exception& error) {
+                std::cerr << "Client error: " << error.what() << '\n';
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(clients_mutex_);
+                client_sockets_.erase(client_socket);
+            }
+
+            close(client_socket);
+        });
+
+        if (!accepted) {
+            try {
+                send_all(client_socket, "Error: server busy\n");
+            } catch (const std::exception& error) {
+                std::cerr << "Failed to send busy response: " << error.what() << '\n';
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(clients_mutex_);
+                client_sockets_.erase(client_socket);
+            }
+
+            close(client_socket);
+        }
+
+        // old code for spawing thread for each connection
+        /*
         client_threads_.emplace_back([this, client_socket]() {
             try {
                 handle_client(client_socket);
@@ -108,16 +144,11 @@ void Server::run() {
             }
             close(client_socket);
         });
+        */
     }
 
-    // if there are still clients, wait for them to finish
-    for (std::thread& client_thread : client_threads_) {
-        if (client_thread.joinable()) {
-            client_thread.join();
-        }
-    }
-
-    client_threads_.clear();
+    // join the workers
+    thread_pool_.stop();
 }
 
 void Server::handle_client(int client_socket) {
