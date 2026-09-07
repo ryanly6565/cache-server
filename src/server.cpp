@@ -114,10 +114,17 @@ void Server::run() {
         });
 
         if (!accepted) {
+            try {
+                send_all(client_socket, "Error: server busy\n");
+            } catch (const std::exception& error) {
+                std::cerr << "Failed to send busy response: " << error.what() << '\n';
+            }
+
             {
                 std::lock_guard<std::mutex> lock(clients_mutex_);
                 client_sockets_.erase(client_socket);
             }
+
             close(client_socket);
         }
 

@@ -403,10 +403,13 @@ TEST_F(WorkerPoolServerTest, RejectsClientWhenWorkerAndQueueAreFull) {
     ASSERT_NE(setsockopt(rejected_client, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)), -1);
 
     char buffer[1];
-    ssize_t received = recv(rejected_client, buffer, sizeof(buffer), 0);
-    int receive_error = errno;
+    std::string rejected_pending;
+    EXPECT_EQ(receive_line(rejected_client, rejected_pending), "Error: server busy\n");
 
     // close the tcp socket and make sure it closes naturally
+    errno = 0;
+    ssize_t received = recv(rejected_client, buffer, sizeof(buffer), 0);
+    int receive_error = errno;
     EXPECT_TRUE(received == 0 || (received == -1 && receive_error == ECONNRESET));
     close(rejected_client);
 
